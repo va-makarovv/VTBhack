@@ -67,6 +67,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.LocalCafe
+import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Close
 
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -108,6 +113,7 @@ private object Routes {
         const val FINANCE_DISTRIBUTION = "app/finance_distribution"
         const val CARDS_ANALYTICS = "app/cards_analytics"
         const val CARD_DETAILS = "app/card_details"
+        const val CARD_CHALLENGES = "app/card_challenges"
     }
 }
 
@@ -238,7 +244,13 @@ private fun AppShell(initial: String) {
             composable(Routes.AppInner.FINANCE_DISTRIBUTION) { FinanceDistributionScreen() }
             composable(Routes.AppInner.CARDS_ANALYTICS) { CardsAnalyticsScreen() }
             composable(Routes.AppInner.CARD_DETAILS) {
-                CardDetailsScreen(onBack = { innerNav.popBackStack() })
+                CardDetailsScreen(
+                    onBack = { innerNav.popBackStack() },
+                    onOpenSettings = { innerNav.navigate(Routes.AppInner.CARD_CHALLENGES) }
+                )
+            }
+            composable(Routes.AppInner.CARD_CHALLENGES) {
+                CardChallengesScreen(onBack = { innerNav.popBackStack() })
             }
         }
     }
@@ -1039,7 +1051,7 @@ private fun CardsAnalyticsScreen() {
 }
 
 @Composable
-private fun CardDetailsScreen(onBack: () -> Unit = {}) {
+private fun CardDetailsScreen(onBack: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
     val background = AppBg
     val hint = Color(0xFFB0B0B0)
     Surface(color = background) {
@@ -1061,7 +1073,7 @@ private fun CardDetailsScreen(onBack: () -> Unit = {}) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
                     }
-                    IconButton(onClick = { /* settings */ }) {
+                    IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color.White.copy(0.9f))
                     }
                 }
@@ -1635,4 +1647,155 @@ private fun formatE164ForProfile(phoneE164: String): String {
 @Composable
 private fun PhoneEntryPreview() {
     PhoneEntryScreen()
+}
+@Composable
+private fun CardChallengesScreen(onBack: () -> Unit = {}) {
+    val background = AppBg
+    val panelBg = Color(0xFF1C1C1E)
+    val itemBg = Color(0xFF2B2B2B)
+    val hint = Color(0x99FFFFFF)
+
+    Surface(color = background) {
+        Box(Modifier.fillMaxSize()) {
+            // soft glow in the top-right corner
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0x8840E0D0), Color.Transparent),
+                            center = Offset.Infinite.copy(x = Float.POSITIVE_INFINITY, y = 0f),
+                            radius = 400f
+                        )
+                    )
+            )
+
+            val scroll = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scroll)
+                    .padding(horizontal = 30.dp)
+                    .padding(top = 12.dp, bottom = 30.dp)
+            ) {
+                // Top bar with back
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text("Ваша карта", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("1999,16 ₽", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+
+                Spacer(Modifier.height(16.dp))
+
+                // Card row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Preview card
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(104.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF202020)
+                    ) {
+                        Box(Modifier.fillMaxSize()) {
+                            Image(
+                                painter = painterResource(id = R.drawable.card_blue),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(width = 160.dp, height = 100.dp)
+                                    .align(Alignment.CenterStart)
+                                    .padding(start = 12.dp),
+                                contentScale = ContentScale.FillBounds
+                            )
+                        }
+                    }
+
+                    // Add tile
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(104.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF202020)
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Add, contentDescription = "Добавить", tint = Color.White)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Challenges panel
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = panelBg
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Челленджи основаны на анализе ваших трат",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.Filled.Close, contentDescription = "Закрыть", tint = Color.White.copy(0.9f))
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        ChallengeItem(icon = Icons.Filled.LocalCafe, text = "7 дней без кофе", bg = itemBg)
+                        ChallengeItem(icon = Icons.Filled.DirectionsWalk, text = "Пройтись пешком вместо автобуса", bg = itemBg)
+                        ChallengeItem(icon = Icons.Filled.Block, text = "Не покупать 3я месяц", bg = itemBg)
+                        ChallengeItem(icon = Icons.Filled.Brush, text = "Воздержаться от покупок в Леонардо", bg = itemBg)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChallengeItem(icon: ImageVector, text: String, bg: Color) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = bg
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(shape = CircleShape, color = Color(0xFF343434)) {
+                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = Color.White)
+                }
+            }
+            Text(text = text, color = Color.White, fontSize = 14.sp)
+        }
+    }
 }
