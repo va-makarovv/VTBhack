@@ -1499,7 +1499,7 @@ private fun WelcomeScreen(onContinue: () -> Unit) {
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "Вы успешно вошли в\nНАЗВАНИЕ",
+                text = "Вы успешно вошли в\nФИНПУЛЬС",
                 color = titleColor,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.SemiBold,
