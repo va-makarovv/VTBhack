@@ -1,0 +1,1638 @@
+package com.example.vtbhack
+
+import androidx.annotation.DrawableRes
+
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.vtbhack.ui.theme.VTBhackTheme
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Payment
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.material.icons.filled.ExpandMore
+
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.navigation
+import androidx.navigation.compose.rememberNavController
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            VTBhackTheme {
+                AppNavHost()
+            }
+        }
+    }
+}
+
+private val AppBg = Color(0xFF141414)
+
+private object Routes {
+    const val AUTH = "auth"
+    const val APP = "app"
+
+    object Auth {
+        const val PHONE = "auth/phone"
+        const val PASSWORD = "auth/password/{phone}"
+        const val WELCOME = "auth/welcome"
+    }
+
+    object AppInner {
+        const val HOME = "app/home"
+        const val PAYMENTS = "app/payments"
+        const val ANALYTICS = "app/analytics"
+        const val MORE = "app/more"
+        const val FINANCE_DISTRIBUTION = "app/finance_distribution"
+        const val CARDS_ANALYTICS = "app/cards_analytics"
+        const val CARD_DETAILS = "app/card_details"
+    }
+}
+
+private object AppSession {
+    // Stores the phone in +7XXXXXXXXXX format set during sign in
+    var phone by mutableStateOf<String?>(null)
+}
+
+@Composable
+private fun AppNavHost() {
+    val navController = rememberNavController()
+
+    // TODO: Replace with your real EncryptedTokenStore check
+    // e.g. val isAuthorized = remember { EncryptedTokenStore(LocalContext.current).hasToken() }
+    val isAuthorized by remember { mutableStateOf(false) }
+
+    val start = if (isAuthorized) Routes.APP else Routes.AUTH
+
+    NavHost(
+        navController = navController,
+        startDestination = start
+    ) {
+        // AUTH GRAPH
+        navigation(
+            startDestination = Routes.Auth.PHONE,
+            route = Routes.AUTH
+        ) {
+            composable(Routes.Auth.PHONE) {
+                PhoneEntryScreen(
+                    onContinue = { phoneE164 ->
+                        // phoneE164 already contains +7...
+                        navController.navigate(Routes.Auth.PASSWORD.replace("{phone}", phoneE164))
+                    }
+                )
+            }
+
+            composable(Routes.Auth.PASSWORD) { backStackEntry ->
+                val phone = backStackEntry.arguments?.getString("phone").orEmpty()
+                PasswordEntryScreen(
+                    phone = phone,
+                    onSignIn = { token ->
+                        // Save phone used for auth to show it in ProfileScreen
+                        AppSession.phone = phone
+
+                        // Go to welcome screen
+                        navController.navigate(Routes.Auth.WELCOME) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.Auth.WELCOME) {
+                WelcomeScreen(
+                    onContinue = {
+                        // Enter the main app and CLEAR auth from back stack
+                        navController.navigate(Routes.APP) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+        }
+
+        // APP GRAPH (BottomBar)
+        navigation(
+            startDestination = Routes.AppInner.HOME,
+            route = Routes.APP
+        ) {
+            composable(Routes.AppInner.HOME) {
+                AppShell(initial = Routes.AppInner.HOME)
+            }
+            composable(Routes.AppInner.PAYMENTS) {
+                AppShell(initial = Routes.AppInner.PAYMENTS)
+            }
+            composable(Routes.AppInner.ANALYTICS) {
+                AppShell(initial = Routes.AppInner.ANALYTICS)
+            }
+            composable(Routes.AppInner.MORE) {
+                AppShell(initial = Routes.AppInner.MORE)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppShell(initial: String) {
+    val innerNav = rememberNavController()
+
+    // Inner host for bottom tabs
+    Scaffold(
+        containerColor = AppBg,
+        bottomBar = {
+            BottomBar(
+                currentRoute = currentRoute(innerNav),
+                onNavigate = { route ->
+                    innerNav.navigate(route) {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(innerNav.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        NavHost(
+            navController = innerNav,
+            startDestination = initial,
+            modifier = Modifier.padding(padding)
+        ) {
+            composable(Routes.AppInner.HOME) {
+                HomeScreen(
+                    onOpenPayments = { innerNav.navigate(Routes.AppInner.PAYMENTS) },
+                    onOpenFinance = { innerNav.navigate(Routes.AppInner.FINANCE_DISTRIBUTION) },
+                    onOpenCardAnalytics = { innerNav.navigate(Routes.AppInner.CARDS_ANALYTICS) },
+                    onOpenCardDetails = { innerNav.navigate(Routes.AppInner.CARD_DETAILS) }
+                )
+            }
+            composable(Routes.AppInner.PAYMENTS) { PaymentsScreen() }
+            composable(Routes.AppInner.ANALYTICS) { AnalyticsScreen() }
+            composable(Routes.AppInner.MORE) { ProfileScreen() }
+            composable(Routes.AppInner.FINANCE_DISTRIBUTION) { FinanceDistributionScreen() }
+            composable(Routes.AppInner.CARDS_ANALYTICS) { CardsAnalyticsScreen() }
+            composable(Routes.AppInner.CARD_DETAILS) {
+                CardDetailsScreen(onBack = { innerNav.popBackStack() })
+            }
+        }
+    }
+}
+
+private data class TabItem(val route: String, val label: String, @DrawableRes val iconRes: Int)
+
+@Composable
+private fun BottomBar(currentRoute: String?, onNavigate: (String) -> Unit) {
+    val items = listOf(
+        TabItem(Routes.AppInner.HOME, "Главная", R.drawable.ic_home),
+        TabItem(Routes.AppInner.PAYMENTS, "Оплата", R.drawable.ic_payments),
+        TabItem(Routes.AppInner.ANALYTICS, "Анализ", R.drawable.ic_analytics),
+        TabItem(Routes.AppInner.MORE, "Профиль", R.drawable.ic_more)
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 30.dp, end = 30.dp, bottom = 30.dp)
+    ) {
+        // Background plate from design (353x87). Put drawable as res/drawable/frame_2.png
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(87.dp)
+                .background(Color(0xFF272727), shape = RoundedCornerShape(20.dp))
+        )
+
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            items.forEach { item ->
+                val selected = currentRoute == item.route
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onNavigate(item.route) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(item.iconRes),
+                        contentDescription = item.label,
+
+                        alpha = if (selected) 1f else 0.6f
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = item.label,
+                        fontSize = 12.sp,
+                        color = if (selected) Color.White else Color(0xFFB0B0B0)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeScreen(
+    onOpenPayments: () -> Unit = {},
+    onOpenFinance: () -> Unit = {},
+    onOpenCardAnalytics: () -> Unit = {},
+    onOpenCardDetails: () -> Unit = {}
+) {
+    val background = AppBg
+    val hint = Color(0x99FFFFFF)
+
+    Surface(color = background) {
+        val scroll = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(scroll)
+                    .padding(horizontal = 30.dp)
+                    .padding(top = 24.dp, bottom = 120.dp) // bottom space so part can scroll under BottomBar
+            ) {
+                // Top bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier.size(36.dp),
+                            shape = CircleShape,
+                            color = Color(0xFF2B2B2B)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(imageVector = Icons.Filled.Person, contentDescription = null, tint = Color.White)
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text("Профиль", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Icon(imageVector = Icons.Filled.Apps, contentDescription = "Уведомления", tint = Color.White.copy(0.8f))
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                Text("Общий баланс", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text("130 000 ₽", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+
+                Spacer(Modifier.height(20.dp))
+
+                // Cards row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    CardTile(
+                        bankName = "Alfa-Bank **2345",
+                        amount = "115 000 ₽",
+                        imageRes = R.drawable.card_blue,
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenCardDetails
+                    )
+                    CardTile(
+                        bankName = "T-Bank **1890",
+                        amount = "5000 ₽",
+                        imageRes = R.drawable.card_blue,
+                        modifier = Modifier.weight(1f),
+                        variant = 1
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Quick actions
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF1C1C1E)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 18.dp, horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ActionItem(icon = Icons.Filled.Payment, label = "Платить", onClick = onOpenPayments)
+                        ActionItem(icon = Icons.Filled.CreditCard, label = "Положить деньги")
+                        ActionItem(icon = Icons.Filled.Apps, label = "Перевести")
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    TransactionsTile(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onOpenPayments() }
+                    )
+                    CashbackTile(
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                WideTile(
+                    title = "Распредели финансы",
+                    icon = Icons.Filled.Apps,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenFinance() }
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                WideTile(
+                    title = "Аналитика по картам",
+                    icon = Icons.Filled.BarChart,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenCardAnalytics() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardTile(
+    bankName: String,
+    amount: String,
+    @DrawableRes imageRes: Int,
+    modifier: Modifier = Modifier,
+    variant: Int = 0,
+    onClick: () -> Unit = {}
+) {
+    val bg = if (variant == 0) {
+        Brush.verticalGradient(listOf(Color(0xFF202020), Color(0xFF272727)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFF26213A), Color(0xFF2F2A40)))
+    }
+    Box(
+        modifier = modifier
+            .height(175.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(bg)
+            .clickable { onClick() }
+    ) {
+        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Image(
+                painter = painterResource(id = imageRes),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(width = 130.dp, height = 83.dp)
+                    .align(Alignment.TopStart),
+                contentScale = ContentScale.FillBounds
+            )
+            Column(
+                modifier = Modifier.align(Alignment.BottomStart)
+            ) {
+                Text(text = bankName, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(text = amount, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionItem(icon: ImageVector, label: String, onClick: () -> Unit = {}) {
+    Column(
+        modifier = Modifier.clickable { onClick() },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(shape = CircleShape, color = Color(0xFF272727)) {
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = label, tint = Color.White)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(text = label, color = Color.White, fontSize = 12.sp, lineHeight = 12.sp)
+    }
+}
+
+@Composable
+private fun TransactionsTile(modifier: Modifier = Modifier) {
+    Surface(modifier = modifier.height(140.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C1C1E)) {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Text("Транзакции", color = Color.White.copy(0.9f), fontSize = 14.sp)
+            Spacer(Modifier.height(4.dp))
+            Text("33 333 ₽", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text("потрачено в Июне", color = Color(0xFF90EE90), fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { 0.8f },
+                modifier = Modifier.fillMaxWidth().height(6.dp),
+                trackColor = Color(0xFF2A2A2A)
+            )
+            Spacer(Modifier.height(2.dp))
+            LinearProgressIndicator(
+                progress = { 0.6f },
+                modifier = Modifier.fillMaxWidth().height(6.dp),
+                trackColor = Color(0xFF2A2A2A)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CashbackTile(modifier: Modifier = Modifier) {
+    Surface(modifier = modifier.height(140.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C1C1E)) {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Surface(shape = CircleShape, color = Color(0xFF2B2B2B)) {
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    Text("360 ₽", color = Color.White, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Заработано кэшбэка", color = Color.White, fontSize = 14.sp)
+            Spacer(Modifier.height(4.dp))
+            Text("Отправить на счет", color = Color(0xFFB0B0B0), fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun WideTile(title: String, icon: ImageVector, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier.height(72.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFF1C1C1E)) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Icon(icon, contentDescription = null, tint = Color.White.copy(0.8f))
+        }
+    }
+}
+@Composable
+private fun PaymentsScreen() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Оплата") }
+}
+@Composable
+private fun AnalyticsScreen() {
+    val background = AppBg
+    val tileBg = Color(0xFF1C1C1E)
+    val hint = Color(0x99FFFFFF)
+
+    Surface(color = background) {
+        val scroll = rememberScrollState()
+        Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(scroll)
+                    .padding(horizontal = 30.dp)
+                    .padding(top = 12.dp, bottom = 120.dp)
+            ) {
+                // Top row (only settings on the right to match bottom-tab context)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.width(24.dp))
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Настройки",
+                        tint = Color.White.copy(0.9f)
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Cards carousel
+                AnalyticsCardsRow()
+
+                Spacer(Modifier.height(16.dp))
+
+                // Траты/Доход
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = tileBg
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 18.dp)
+                    ) {
+                        Text(
+                            "Траты/Доход",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        val max = 400_000f
+                        StatRow(
+                            label = "Доход",
+                            amountText = "400 000 ₽",
+                            progress = 400_000f / max,
+                            barColor = Color(0xFF9B7CFF),
+                            hint = hint
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        StatRow(
+                            label = "Траты",
+                            amountText = "230 000 ₽",
+                            progress = 230_000f / max,
+                            barColor = Color(0xFFFF91A4),
+                            hint = hint
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        StatRow(
+                            label = "Различие",
+                            amountText = "170 000 ₽",
+                            progress = 170_000f / max,
+                            barColor = Color(0xFFC3F0E7),
+                            hint = hint
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Траты по категориям
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = tileBg
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Траты по категориям",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = Color(0xFF2B2B2B)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Ноябрь", color = Color.White, fontSize = 14.sp)
+                                    Icon(
+                                        imageVector = Icons.Filled.ExpandMore,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(0.9f)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        Text("9 922 ₽", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(230.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val segments = listOf(
+                                Segment(0.50f, Color(0xFFFFD64D)), // жёлтый
+                                Segment(0.30f, Color(0xFF9B7CFF)), // фиолетовый
+                                Segment(0.15f, Color(0xFF8FE5E2)), // бирюзовый
+                                Segment(0.05f, Color(0xFFFF7A7A))  // красный
+                            )
+                            DonutChart(segments = segments, thickness = 26.dp, gapDegrees = 2f, modifier = Modifier.padding(16.dp))
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        var period by remember { mutableStateOf(1) } // 0-неделя, 1-месяц, 2-год
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PeriodChip("Неделя", selected = period == 0) { period = 0 }
+                            PeriodChip("Месяц", selected = period == 1) { period = 1 }
+                            PeriodChip("Год", selected = period == 2) { period = 2 }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class Segment(val fraction: Float, val color: Color)
+
+@Composable
+private fun AnalyticsCardsRow() {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        val cards = listOf(
+            "Alfa-Bank **2345" to "115 000 ₽",
+            "T-Bank **1890" to "5000 ₽",
+            "T-Bank **1890" to "5000 ₽"
+        )
+        items(cards) { (title, amount) ->
+            CardSmall(title = title, amount = amount)
+        }
+    }
+}
+
+@Composable
+private fun CardSmall(title: String, amount: String) {
+    val bg = Brush.verticalGradient(listOf(Color(0xFF202020), Color(0xFF272727)))
+    Column(
+        modifier = Modifier
+            .width(160.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .height(100.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(bg)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.card_blue),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(width = 130.dp, height = 83.dp)
+                    .align(Alignment.TopStart)
+                    .padding(12.dp),
+                contentScale = ContentScale.FillBounds
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(text = title, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+        Spacer(Modifier.height(2.dp))
+        Text(text = amount, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun StatRow(
+    label: String,
+    amountText: String,
+    progress: Float,
+    barColor: Color,
+    hint: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
+        Text(amountText, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+    Spacer(Modifier.height(6.dp))
+    LinearProgressIndicator(
+        progress = { progress.coerceIn(0f, 1f) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(8.dp),
+        color = barColor,
+        trackColor = Color(0xFF2A2A2A)
+    )
+}
+
+@Composable
+private fun PeriodChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    val bgSelected = Color(0xFF2B2B2B)
+    val bg = if (selected) bgSelected else bgSelected.copy(alpha = 0.5f)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = bg,
+        modifier = Modifier
+            .clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = text, color = Color.White, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+private fun DonutChart(
+    segments: List<Segment>,
+    thickness: Dp,
+    gapDegrees: Float = 0f,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val diameter = size.minDimension
+        val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+        val arcSize = Size(diameter, diameter)
+        val stroke = Stroke(width = thickness.toPx(), cap = StrokeCap.Butt)
+        var start = -90f
+        segments.forEach { seg ->
+            val sweep = 360f * seg.fraction - gapDegrees
+            if (sweep > 0f) {
+                drawArc(
+                    color = seg.color,
+                    startAngle = start,
+                    sweepAngle = sweep,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = stroke
+                )
+                start += 360f * seg.fraction
+            }
+        }
+    }
+}
+@Composable
+private fun MoreScreen() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Основное") }
+}
+@Composable
+private fun ProfileScreen() {
+    val background = AppBg
+    val fieldBg = Color(0xFF1C1C1E)
+    val hint = Color(0x99FFFFFF)
+    val pillPurple = Color(0xFF8B7CF6)
+
+    val phoneRaw = AppSession.phone ?: "+7"
+    val phoneUi = remember(phoneRaw) { formatE164ForProfile(phoneRaw) }
+
+    Surface(color = background) {
+        val scroll = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(scroll)
+                    .padding(horizontal = 30.dp)
+                    .padding(top = 12.dp, bottom = 120.dp)
+            ) {
+                // Top bar with centered title and actions on the right
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Профиль",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Apps, // bell substitute
+                            contentDescription = "Уведомления",
+                            tint = Color.White.copy(0.9f)
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Настройки",
+                            tint = Color.White.copy(0.9f)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Subtle header gradient under the top bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0x3340E0D0), // soft glow
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                // Avatar
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        modifier = Modifier.size(112.dp),
+                        shape = CircleShape,
+                        color = Color(0xFF2B2B2B)
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Phone number
+                Text(
+                    text = phoneUi,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                // Subscription level pill
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = pillPurple
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Уровень подписки",
+                            color = Color.Black,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color.White
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .defaultMinSize(minWidth = 64.dp)
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Pro",
+                                    color = Color.Black,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Support tile
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = fieldBg
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Поддержка",
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF2B2B2B)
+                        ) {
+                            Box(
+                                modifier = Modifier.size(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Remove,
+                                    contentDescription = null,
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinanceDistributionScreen() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Распредели финансы") }
+}
+
+@Composable
+private fun CardsAnalyticsScreen() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Аналитика по картам") }
+}
+
+@Composable
+private fun CardDetailsScreen(onBack: () -> Unit = {}) {
+    val background = AppBg
+    val hint = Color(0xFFB0B0B0)
+    Surface(color = background) {
+        Box(Modifier.fillMaxSize()) {
+            val scroll = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scroll)
+            ) {
+                // Top bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 30.dp, end = 30.dp, top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
+                    }
+                    IconButton(onClick = { /* settings */ }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color.White.copy(0.9f))
+                    }
+                }
+
+                // Card header with subtle gradient background
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 30.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF2C2242), Color.Transparent),
+                                tileMode = TileMode.Clamp
+                            )
+                        )
+                        .padding(top = 20.dp, bottom = 16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.card_blue),
+                            contentDescription = null,
+                            modifier = Modifier.size(width = 188.dp, height = 120.dp),
+                            contentScale = ContentScale.FillBounds
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text("Alfa-Bank **2345", color = Color.White, fontSize = 16.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Text("115 000 ₽", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            MiniCard(title = "Alfa-Bank **2345", amount = "115 000 ₽")
+                            MiniCard(title = "T-Bank **1890", amount = "5000 ₽")
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    text = "Итого за Сентябрь",
+                    color = hint,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 30.dp)
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 30.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    KpiChip(title = "Доходы", value = "188 000 ₽", positive = true, modifier = Modifier.weight(1f))
+                    KpiChip(title = "Расходы", value = "58 000 ₽", positive = false, modifier = Modifier.weight(1f))
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                DayHeader(day = "September, 24th", total = "Итого: -2250 ₽")
+                TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Delivery Club", amountText = "- 1500")
+                TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Yandex GO", amountText = "- 750")
+
+                Spacer(Modifier.height(8.dp))
+                DayHeader(day = "September, 21th", total = "")
+                TransactionRow(isIncome = true, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Vasiliy M.", amountText = "+ 1500")
+                TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Delivery Club", amountText = "- 2000")
+
+                Spacer(Modifier.height(8.dp))
+                DayHeader(day = "September, 19th", total = "")
+                // Extra copies to make it look long
+                repeat(10) {
+                    TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Delivery Club", amountText = "- 450")
+                }
+
+                Spacer(Modifier.height(120.dp)) // bottom space to scroll above bottom bar
+            }
+
+            // Floating edit button
+            FloatingActionButton(
+                onClick = { /* edit */ },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(30.dp),
+                containerColor = Color(0xFF2F80ED)
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = "Edit")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniCard(title: String, amount: String) {
+    Column(horizontalAlignment = Alignment.Start) {
+        Image(
+            painter = painterResource(id = R.drawable.card_blue),
+            contentDescription = null,
+            modifier = Modifier.size(width = 106.dp, height = 68.dp),
+            contentScale = ContentScale.FillBounds
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(text = title, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+        Spacer(Modifier.height(2.dp))
+        Text(text = amount, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun KpiChip(title: String, value: String, positive: Boolean, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White
+    ) {
+        Row(
+            modifier = Modifier
+                .defaultMinSize(minHeight = 64.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ColoredDot(color = if (positive) Color(0xFF00C853) else Color(0xFFFF5252))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, color = Color.Black.copy(alpha = 0.8f), fontSize = 13.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(value, color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Icon(Icons.Filled.OpenInNew, contentDescription = null, tint = Color.Black.copy(alpha = 0.6f))
+        }
+    }
+}
+
+@Composable
+private fun DayHeader(day: String, total: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 30.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(day, color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+        if (total.isNotBlank()) {
+            Text(total, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun TransactionRow(
+    isIncome: Boolean,
+    title: String,
+    bank: String,
+    merchant: String,
+    amountText: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 30.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(shape = CircleShape, color = Color(0xFF2B2B2B)) {
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                if (isIncome) {
+                    Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFF00C853))
+                } else {
+                    Icon(Icons.Filled.Remove, contentDescription = null, tint = Color.White)
+                }
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ColoredDot(color = if (isIncome) Color(0xFF00C853) else Color(0xFFFF5252))
+                Spacer(Modifier.width(6.dp))
+                Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(bank, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            Text(merchant, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = amountText,
+            color = if (isIncome) Color(0xFF00C853) else Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun ColoredDot(color: Color) {
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .clip(CircleShape)
+            .background(color)
+    )
+}
+
+@Composable
+private fun currentRoute(navController: NavHostController): String? {
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    return backStackEntry?.destination?.route
+}
+@Composable
+fun PhoneEntryScreen(
+    onContinue: (String) -> Unit = {}
+) {
+    val background = AppBg
+    val fieldBg = Color(0xFF1C1C1E)
+    val hint = Color(0x99FFFFFF)
+    val buttonPurple = Color(0xFF8B7CF6) // мягкий фиолетовый
+    var digits by remember { mutableStateOf("") }
+
+    Surface(color = background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(30.dp), // гайдлайн 30dp со всех сторон
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(
+                text = "Введите\nномер телефона",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 38.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = "Чтобы войти или стать клиентом",
+                color = hint,
+                fontSize = 16.sp
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            PhoneNumberField(
+                valueDigits = digits,
+                onDigitsChange = { if (it.length <= 10) digits = it },
+                containerColor = fieldBg,
+                hintColor = hint
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            Button(
+                onClick = { onContinue("+7$digits") },
+                enabled = digits.length == 10,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = buttonPurple,
+                    contentColor = Color.White,
+                    disabledContainerColor = buttonPurple.copy(alpha = 0.4f),
+                    disabledContentColor = Color.White.copy(alpha = 0.6f)
+                )
+            ) {
+                Text("Продолжить", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+
+        }
+    }
+}
+
+@Composable
+private fun PasswordEntryScreen(
+    phone: String,
+    onSignIn: (token: String) -> Unit,
+    onBack: () -> Unit
+) {
+    val background = AppBg
+    val fieldBg = Color(0xFF1C1C1E)
+    val hint = Color(0x99FFFFFF)
+    val buttonPurple = Color(0xFF8B7CF6)
+
+    var password by rememberSaveable { mutableStateOf("") }
+    var showPassword by rememberSaveable { mutableStateOf(false) }
+    var tried by rememberSaveable { mutableStateOf(false) }
+
+    val valid = remember(password) { isPasswordStrong(password) }
+    val helpColor = if (tried && !valid) Color(0xFFFF4D4F) else hint
+
+    Surface(color = background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(30.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) {
+                Text("Назад", color = Color.White)
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Введите пароль",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 38.sp
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(text = phone, color = hint, fontSize = 16.sp)
+
+            Spacer(Modifier.height(24.dp))
+
+            TextField(
+                value = password,
+                onValueChange = { password = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                placeholder = { Text("Пароль", color = hint) },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(
+                            imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (showPassword) "Скрыть пароль" else "Показать пароль"
+                        )
+                    }
+                },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = fieldBg,
+                    unfocusedContainerColor = fieldBg,
+                    disabledContainerColor = fieldBg,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = Color.White,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                )
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "8 символов минимум. Латиница, цифры и спец. символы",
+                color = helpColor,
+                fontSize = 13.sp
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            Button(
+                onClick = {
+                    tried = true
+                    if (valid) {
+                        onSignIn("FAKE_TOKEN")
+                    }
+                },
+                enabled = password.isNotBlank(),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = buttonPurple,
+                    contentColor = Color.White,
+                    disabledContainerColor = buttonPurple.copy(alpha = 0.4f),
+                    disabledContentColor = Color.White.copy(alpha = 0.6f)
+                )
+            ) {
+                Text("Войти", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+/** Проверка пароля: длина >= 8, хотя бы одна латинская буква, цифра и спец. символ. */
+private fun isPasswordStrong(pw: String): Boolean {
+    if (pw.length < 8) return false
+    val hasLatin = pw.any { it in 'a'..'z' || it in 'A'..'Z' }
+    val hasDigit = pw.any { it.isDigit() }
+    val hasSpecial = pw.any { !it.isLetterOrDigit() }
+    return hasLatin && hasDigit && hasSpecial
+}
+
+@Composable
+private fun WelcomeScreen(onContinue: () -> Unit) {
+    // Colors used on the mock
+    val background = AppBg
+    val titleColor = Color.White
+    val subtitleColor = Color(0x99FFFFFF)
+    val buttonPurple = Color(0xFF8B7CF6)
+
+    Surface(color = background, modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(30.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Вы успешно вошли в\nНАЗВАНИЕ",
+                color = titleColor,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 38.sp
+            )
+
+            // Push the image roughly to the center area similar to the mock
+            Spacer(Modifier.height(40.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f), // occupy the available vertical space so button sits near bottom
+                contentAlignment = Alignment.TopCenter
+            ) {
+                // Use the provided 302x302 image. The drawable resource name used below is
+                // R.drawable.checkmark — add your image under res/drawable/checkmark.png
+                Image(
+                    painter = painterResource(id = R.drawable.checkmark),
+                    contentDescription = "check",
+                    modifier = Modifier
+                        .size(302.dp)
+                        .align(Alignment.Center),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Rounded full-width button at the bottom (respecting 30dp padding on sides)
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(18.dp)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = buttonPurple,
+                    contentColor = Color.Black,
+                    disabledContainerColor = buttonPurple.copy(alpha = 0.4f),
+                    disabledContentColor = Color.Black.copy(alpha = 0.6f)
+                ),
+                contentPadding = PaddingValues()
+            ) {
+                Text(
+                    text = "Продолжить",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun PhoneNumberField(
+    valueDigits: String,
+    onDigitsChange: (String) -> Unit,
+    containerColor: Color,
+    hintColor: Color
+) {
+    val formatted = remember(valueDigits) { formatRuPhone(valueDigits) }
+
+    TextField(
+        value = formatted,
+        onValueChange = { input -> onDigitsChange(input.filter { it.isDigit() }) },
+        singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        placeholder = { Text("Номер телефона", color = hintColor) },
+        leadingIcon = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RussiaFlagIcon(size = 22.dp)
+                Spacer(Modifier.width(10.dp))
+            }
+        },
+        prefix = { Text("+7 ", color = Color.White) },
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = containerColor,
+            unfocusedContainerColor = containerColor,
+            disabledContainerColor = containerColor,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            cursorColor = Color.White,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        ),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Phone,
+            imeAction = ImeAction.Done
+        )
+    )
+}
+
+/** Кружок-флаг РФ без ресурсов. */
+@Composable
+private fun RussiaFlagIcon(size: Dp) {
+    Surface(
+        modifier = Modifier.size(size),
+        shape = CircleShape,
+        color = Color.Transparent
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxWidth().background(Color.White))
+            Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF0039A6))) // синий
+            Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFFD52B1E))) // красный
+        }
+    }
+}
+
+/** Форматирование 10 цифр в вид 999 999-99-99. */
+private fun formatRuPhone(digits: String): String {
+    val seg = intArrayOf(3, 3, 2, 2)
+    val sep = arrayOf(" ", " ", "-", "-")
+    val sb = StringBuilder()
+    var p = 0
+    for (i in seg.indices) {
+        if (p >= digits.length) break
+        val take = minOf(seg[i], digits.length - p)
+        sb.append(digits.substring(p, p + take))
+        p += take
+        if (take == seg[i] && p < digits.length) sb.append(sep[i])
+    }
+    return sb.toString()
+}
+
+/** Форматируем "+7XXXXXXXXXX" в вид "+7 (999) 100 10 10" для шапки профиля. */
+private fun formatE164ForProfile(phoneE164: String): String {
+    val digits = phoneE164.filter { it.isDigit() }
+    val core = if (digits.startsWith("7") && digits.length >= 11) digits.takeLast(10) else digits.takeLast(10)
+    if (core.length != 10) return phoneE164
+    val p1 = core.substring(0, 3)
+    val p2 = core.substring(3, 6)
+    val p3 = core.substring(6, 8)
+    val p4 = core.substring(8, 10)
+    return "+7 ($p1) $p2 $p3 $p4"
+}
+
+@Preview(showBackground = true, backgroundColor = 0x000000, widthDp = 392, heightDp = 852)
+@Composable
+private fun PhoneEntryPreview() {
+    PhoneEntryScreen()
+}
