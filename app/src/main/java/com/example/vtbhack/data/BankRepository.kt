@@ -6,7 +6,9 @@ import kotlinx.coroutines.withContext
 object BankRepository {
 
 
-
+    var vbankConsentId: String? = null
+    var sbankConsentId: String? = null
+    var abankConsentId: String? = null
     private var accountsInternal: List<BankApi.AccountDto> = emptyList()
     private var accountsUi: List<BankAccountUi> = emptyList()
     var transactionsByAccount: Map<String, List<BankApi.TransactionDto>> = emptyMap()

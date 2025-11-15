@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.vtbhack.ui.theme.VTBhackTheme
-import com.example.vtbhack.AppSession
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -29,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -45,7 +43,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -66,8 +63,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -122,6 +117,8 @@ private object Routes {
         const val CARDS_ANALYTICS = "app/cards_analytics"
         const val CARD_DETAILS = "app/card_details/{accountId}"
         const val CARD_CHALLENGES = "app/card_challenges/{accountId}"
+        const val SBANK_CONSENT = "app/sbank_consent"
+
     }
 }
 
@@ -270,11 +267,24 @@ private fun AppShell(initial: String) {
 
             composable(Routes.AppInner.PAYMENTS) { PaymentsScreen() }
             composable(Routes.AppInner.ANALYTICS) { AnalyticsScreen() }
-            composable(Routes.AppInner.MORE) { ProfileScreen() }
+            composable(Routes.AppInner.MORE) {
+                ProfileScreen(
+                    onOpenSBankConsent = { innerNav.navigate(Routes.AppInner.SBANK_CONSENT) }
+                )
+            }
             composable(Routes.AppInner.FINANCE_DISTRIBUTION) { FinanceDistributionScreen() }
             composable(Routes.AppInner.CARDS_ANALYTICS) { CardsAnalyticsScreen() }
 
-
+            composable(Routes.AppInner.SBANK_CONSENT) {
+                SBankConsentScreen(
+                    onBack = { innerNav.popBackStack() },
+                    onConsentReady = { consentId ->
+                        // тут можешь сохранить в какой-нибудь репо
+                        BankRepository.sbankConsentId = consentId
+                        innerNav.popBackStack()
+                    }
+                )
+            }
 
         }
     }
@@ -925,7 +935,9 @@ private fun MoreScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Основное") }
 }
 @Composable
-private fun ProfileScreen() {
+private fun ProfileScreen(
+    onOpenSBankConsent: () -> Unit = {}
+) {
     val background = AppBg
     val fieldBg = Color(0xFF1C1C1E)
     val hint = Color(0x99FFFFFF)
@@ -1105,6 +1117,15 @@ private fun ProfileScreen() {
                         }
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+
+                WideTile(
+                    title = "Подключить SBank",
+                    icon = Icons.Filled.OpenInNew,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenSBankConsent() }
+                )
             }
         }
     }
@@ -1929,6 +1950,229 @@ private fun ChallengeItem(icon: ImageVector, text: String, bg: Color) {
                 }
             }
             Text(text = text, color = Color.White, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+fun SBankConsentScreen(
+    onBack: () -> Unit,
+    onConsentReady: (String) -> Unit
+) {
+    val background = AppBg
+    val scope = rememberCoroutineScope()
+
+    var isLoading by remember { mutableStateOf(false) }
+    var step by remember { mutableStateOf(1) } // 1 - отправка запроса, 2 - ожидание подтверждения
+    var requestId by remember { mutableStateOf<String?>(null) }
+    var consentId by remember { mutableStateOf<String?>(null) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    Surface(color = background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 30.dp, vertical = 20.dp)
+        ) {
+            // Top bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
+                }
+                Text(
+                    text = "Подключить SBank",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.width(48.dp))
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            when {
+                consentId != null -> {
+                    Text(
+                        text = "SBank успешно подключён 🎉",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "Теперь мы сможем подтягивать ваши счета и транзакции из SBank.",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            // сохраняешь где нужно и выходишь
+                            onConsentReady(consentId!!)
+                        },
+                        enabled = !isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Готово")
+                    }
+                }
+
+                step == 1 -> {
+                    Text(
+                        text = "Шаг 1 из 2",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Отправим запрос на доступ к счетам в SBank",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "Мы создадим согласие в SBank. После этого зайдите в интернет-банк и подтвердите его.",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 14.sp
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
+                    if (errorText != null) {
+                        Text(
+                            text = errorText!!,
+                            color = Color(0xFFFF4D4F),
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                errorText = null
+                                try {
+                                    val resp = ApiService.createAccountsConsent("sbank")
+                                    when {
+                                        resp.consent_id != null -> {
+                                            // банк сразу вернул consent_id
+                                            consentId = resp.consent_id
+                                            // можно сразу дернуть onConsentReady, но проще оставить пользователю "Готово"
+                                        }
+                                        resp.request_id != null -> {
+                                            requestId = resp.request_id
+                                            step = 2
+                                        }
+                                        else -> {
+                                            errorText = "Сервер не вернул request_id/consent_id"
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    errorText = e.message ?: "Неизвестная ошибка"
+                                } finally {
+                                    isLoading = false
+                                }
+                            }
+                        },
+                        enabled = !isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("Отправить запрос в SBank")
+                    }
+                }
+
+                step == 2 -> {
+                    Text(
+                        text = "Шаг 2 из 2",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Подтверди согласие в SBank",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "1. Открой интернет-банк SBank (в браузере или приложении)\n" +
+                                "2. Найди раздел «Согласия»\n" +
+                                "3. Подтверди запрос от «Team 255 App»\n" +
+                                "4. Вернись сюда и нажми кнопку ниже",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 14.sp
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
+                    requestId?.let {
+                        Text(
+                            text = "ID запроса: $it",
+                            color = Color(0xFF666666),
+                            fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    if (errorText != null) {
+                        Text(
+                            text = errorText!!,
+                            color = Color(0xFFFF4D4F),
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    Button(
+                        onClick = {
+                            val rid = requestId ?: return@Button
+                            scope.launch {
+                                isLoading = true
+                                errorText = null
+                                try {
+                                    val resp = ApiService.getConsentByRequestId("sbank", rid)
+                                    if (resp.consent_id != null) {
+                                        consentId = resp.consent_id
+                                    } else {
+                                        errorText = "Согласие ещё не подтверждено. Попробуйте чуть позже."
+                                    }
+                                } catch (e: Exception) {
+                                    errorText = e.message ?: "Неизвестная ошибка"
+                                } finally {
+                                    isLoading = false
+                                }
+                            }
+                        },
+                        enabled = !isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text("Я подтвердил в SBank")
+                    }
+                }
+            }
         }
     }
 }
