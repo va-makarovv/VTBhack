@@ -399,6 +399,7 @@ private fun HomeScreen(
                     Icon(imageVector = Icons.Filled.Apps, contentDescription = "Уведомления", tint = Color.White.copy(0.8f))
                 }
 
+
                 Spacer(Modifier.height(24.dp))
 
                 Text(
