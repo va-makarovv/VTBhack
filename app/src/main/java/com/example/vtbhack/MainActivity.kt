@@ -2,6 +2,9 @@ package com.example.vtbhack
 
 import androidx.annotation.DrawableRes
 
+import androidx.compose.runtime.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -16,7 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.vtbhack.ui.theme.VTBhackTheme
-
+import com.example.vtbhack.AppSession
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -52,6 +55,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,6 +86,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import com.example.vtbhack.data.ApiService
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,15 +120,12 @@ private object Routes {
         const val MORE = "app/more"
         const val FINANCE_DISTRIBUTION = "app/finance_distribution"
         const val CARDS_ANALYTICS = "app/cards_analytics"
-        const val CARD_DETAILS = "app/card_details"
-        const val CARD_CHALLENGES = "app/card_challenges"
+        const val CARD_DETAILS = "app/card_details/{accountId}"
+        const val CARD_CHALLENGES = "app/card_challenges/{accountId}"
     }
 }
 
-private object AppSession {
-    // Stores the phone in +7XXXXXXXXXX format set during sign in
-    var phone by mutableStateOf<String?>(null)
-}
+
 
 @Composable
 private fun AppNavHost() {
@@ -157,6 +162,10 @@ private fun AppNavHost() {
                     onSignIn = { token ->
                         // Save phone used for auth to show it in ProfileScreen
                         AppSession.phone = phone
+                        AppSession.jwt = token
+                        navController.navigate(Routes.Auth.WELCOME)
+
+                        // потом унесём jwt в ESP
 
                         // Go to welcome screen
                         navController.navigate(Routes.Auth.WELCOME) {
@@ -180,6 +189,8 @@ private fun AppNavHost() {
                     }
                 )
             }
+
+
         }
 
         // APP GRAPH (BottomBar)
@@ -235,23 +246,36 @@ private fun AppShell(initial: String) {
                     onOpenPayments = { innerNav.navigate(Routes.AppInner.PAYMENTS) },
                     onOpenFinance = { innerNav.navigate(Routes.AppInner.FINANCE_DISTRIBUTION) },
                     onOpenCardAnalytics = { innerNav.navigate(Routes.AppInner.CARDS_ANALYTICS) },
-                    onOpenCardDetails = { innerNav.navigate(Routes.AppInner.CARD_DETAILS) }
+                    onOpenCardDetails = { accountId ->
+                        innerNav.navigate("app/card_details/$accountId")}
                 )
             }
+            composable("app/card_details/{accountId}") { backStackEntry ->
+                val accountId = backStackEntry.arguments?.getString("accountId") ?: return@composable
+                CardDetailsScreen(
+                    accountId = accountId,
+                    onBack = { innerNav.popBackStack() },
+                    onOpenSettings = {
+                        innerNav.navigate("app/card_challenges/$accountId")
+                    }
+                )
+            }
+            composable("app/card_challenges/{accountId}") { backStackEntry ->
+                val accountId = backStackEntry.arguments?.getString("accountId") ?: return@composable
+                CardChallengesScreen(
+                    accountId = accountId,
+                    onBack = { innerNav.popBackStack() }
+                )
+            }
+
             composable(Routes.AppInner.PAYMENTS) { PaymentsScreen() }
             composable(Routes.AppInner.ANALYTICS) { AnalyticsScreen() }
             composable(Routes.AppInner.MORE) { ProfileScreen() }
             composable(Routes.AppInner.FINANCE_DISTRIBUTION) { FinanceDistributionScreen() }
             composable(Routes.AppInner.CARDS_ANALYTICS) { CardsAnalyticsScreen() }
-            composable(Routes.AppInner.CARD_DETAILS) {
-                CardDetailsScreen(
-                    onBack = { innerNav.popBackStack() },
-                    onOpenSettings = { innerNav.navigate(Routes.AppInner.CARD_CHALLENGES) }
-                )
-            }
-            composable(Routes.AppInner.CARD_CHALLENGES) {
-                CardChallengesScreen(onBack = { innerNav.popBackStack() })
-            }
+
+
+
         }
     }
 }
@@ -320,10 +344,26 @@ private fun HomeScreen(
     onOpenPayments: () -> Unit = {},
     onOpenFinance: () -> Unit = {},
     onOpenCardAnalytics: () -> Unit = {},
-    onOpenCardDetails: () -> Unit = {}
+    onOpenCardDetails: (String) -> Unit
 ) {
     val background = AppBg
-    val hint = Color(0x99FFFFFF)
+    val hint = Color(0xFFB0B0B0)
+
+    var accounts by remember { mutableStateOf<List<BankRepository.BankAccountUi>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        try {
+            BankRepository.refreshAllData()
+            accounts = BankRepository.getAccountsUi()
+        } catch (e: Exception) {
+            errorText = "Ошибка загрузки счетов: ${e.message}"
+        } finally {
+            isLoading = false
+        }
+    }
+
 
     Surface(color = background) {
         val scroll = rememberScrollState()
@@ -361,31 +401,60 @@ private fun HomeScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                Text("Общий баланс", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Общий баланс",
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
                 Spacer(Modifier.height(8.dp))
-                Text("130 000 ₽", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+
+                val total = accounts.sumOf { it.balance }
+
+                Text(
+                    text = "${total.toInt()} ₽",
+                    color = Color.White,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
                 Spacer(Modifier.height(20.dp))
 
                 // Cards row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    CardTile(
-                        bankName = "Alfa-Bank **2345",
-                        amount = "115 000 ₽",
-                        imageRes = R.drawable.card_blue,
-                        modifier = Modifier.weight(1f),
-                        onClick = onOpenCardDetails
+                if (errorText != null) {
+                    Text(
+                        text = errorText!!,
+                        color = Color(0xFFFF4D4F),
+                        fontSize = 13.sp
                     )
-                    CardTile(
-                        bankName = "T-Bank **1890",
-                        amount = "5000 ₽",
-                        imageRes = R.drawable.card_blue,
-                        modifier = Modifier.weight(1f),
-                        variant = 1
+                }
+
+                if (isLoading) {
+                    Text(
+                        text = "Загружаем карты...",
+                        color = Color.White,
+                        fontSize = 14.sp
                     )
+                } else {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(accounts) { acc ->
+                            val cardImageRes = when (acc.bank.lowercase()) {
+                                "vbank" -> R.drawable.vbank_card
+                                "abank" -> R.drawable.abank_card
+                                "sbank" -> R.drawable.sbank_card
+                                else -> R.drawable.card_blue
+                            }
+
+                            CardTile(
+                                bankName = acc.title,
+                                amount = "${acc.balance.toInt()} ₽",
+                                imageRes = cardImageRes,
+                                modifier = Modifier.width(180.dp),
+                                onClick = { onOpenCardDetails(acc.id) }
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -1051,7 +1120,10 @@ private fun CardsAnalyticsScreen() {
 }
 
 @Composable
-private fun CardDetailsScreen(onBack: () -> Unit = {}, onOpenSettings: () -> Unit = {}) {
+private fun CardDetailsScreen(
+    accountId: String,
+    onBack: () -> Unit = {},
+    onOpenSettings: () -> Unit = {}) {
     val background = AppBg
     val hint = Color(0xFFB0B0B0)
     Surface(color = background) {
@@ -1373,6 +1445,10 @@ private fun PasswordEntryScreen(
     var password by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
     var tried by rememberSaveable { mutableStateOf(false) }
+    var isLoading by rememberSaveable { mutableStateOf(false) }
+    var errorText by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
 
     val valid = remember(password) { isPasswordStrong(password) }
     val helpColor = if (tried && !valid) Color(0xFFFF4D4F) else hint
@@ -1451,23 +1527,30 @@ private fun PasswordEntryScreen(
             Button(
                 onClick = {
                     tried = true
-                    if (valid) {
-                        onSignIn("FAKE_TOKEN")
+                    if (valid && !isLoading) {
+                        scope.launch {
+                            isLoading = true
+                            errorText = null
+                            try {
+                                val token = ApiService.login(phone, password)
+                                onSignIn(token)
+                            } catch (e: Exception) {
+                                errorText = "Ошибка входа: ${e.message}"
+                            } finally {
+                                isLoading = false
+                            }
+                        }
                     }
                 },
-                enabled = password.isNotBlank(),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = buttonPurple,
-                    contentColor = Color.White,
-                    disabledContainerColor = buttonPurple.copy(alpha = 0.4f),
-                    disabledContentColor = Color.White.copy(alpha = 0.6f)
-                )
+                enabled = password.isNotBlank() && !isLoading,
+
             ) {
-                Text("Войти", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (isLoading) "Входим..." else "Войти",)
+        }
+
+            if (errorText != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(errorText!!, color = Color(0xFFFF4D4F), fontSize = 13.sp)
             }
         }
     }
@@ -1564,11 +1647,12 @@ private fun PhoneNumberField(
     containerColor: Color,
     hintColor: Color
 ) {
-    val formatted = remember(valueDigits) { formatRuPhone(valueDigits) }
-
     TextField(
-        value = formatted,
-        onValueChange = { input -> onDigitsChange(input.filter { it.isDigit() }) },
+        value = valueDigits,
+        onValueChange = { input ->
+            val digitsOnly = input.filter { it.isDigit() }
+            onDigitsChange(digitsOnly.take(10))
+        },
         singleLine = true,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
@@ -1582,6 +1666,7 @@ private fun PhoneNumberField(
             }
         },
         prefix = { Text("+7 ", color = Color.White) },
+        visualTransformation = PhoneNumberVisualTransformation(),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = containerColor,
             unfocusedContainerColor = containerColor,
@@ -1631,6 +1716,29 @@ private fun formatRuPhone(digits: String): String {
     return sb.toString()
 }
 
+private class PhoneNumberVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text.filter { it.isDigit() }.take(10)
+        val formatted = formatRuPhone(raw)
+
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int {
+                val clamped = offset.coerceIn(0, raw.length)
+                val sub = raw.take(clamped)
+                return formatRuPhone(sub).length
+            }
+
+            override fun transformedToOriginal(offset: Int): Int {
+                val clamped = offset.coerceIn(0, formatted.length)
+                val visibleSub = formatted.take(clamped)
+                return visibleSub.count { it.isDigit() }.coerceIn(0, raw.length)
+            }
+        }
+
+        return TransformedText(AnnotatedString(formatted), offsetMapping)
+    }
+}
+
 /** Форматируем "+7XXXXXXXXXX" в вид "+7 (999) 100 10 10" для шапки профиля. */
 private fun formatE164ForProfile(phoneE164: String): String {
     val digits = phoneE164.filter { it.isDigit() }
@@ -1649,7 +1757,26 @@ private fun PhoneEntryPreview() {
     PhoneEntryScreen()
 }
 @Composable
-private fun CardChallengesScreen(onBack: () -> Unit = {}) {
+private fun CardChallengesScreen(
+    accountId: String,
+    onBack: () -> Unit = {}
+) {
+    val account = remember(accountId) {
+        BankRepository.getAccountsUi().find { it.id == accountId }
+    }
+
+    val balanceText = remember(account) {
+        val value = account?.balance ?: 0.0
+        // очень простое форматирование, при желании можно улучшить
+        String.format("%,.2f ₽", value).replace(",", " ")
+    }
+
+    val cardImageRes = when (account?.bank?.lowercase()) {
+        "vbank" -> R.drawable.vbank_card
+        "abank" -> R.drawable.abank_card
+        "sbank" -> R.drawable.sbank_card
+        else -> R.drawable.card_blue
+    }
     val background = AppBg
     val panelBg = Color(0xFF1C1C1E)
     val itemBg = Color(0xFF2B2B2B)
@@ -1687,7 +1814,12 @@ private fun CardChallengesScreen(onBack: () -> Unit = {}) {
 
                 Text("Ваша карта", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
                 Spacer(Modifier.height(6.dp))
-                Text("1999,16 ₽", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = balanceText,
+                    color = Color.White,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
 
                 Spacer(Modifier.height(16.dp))
 
@@ -1706,7 +1838,7 @@ private fun CardChallengesScreen(onBack: () -> Unit = {}) {
                     ) {
                         Box(Modifier.fillMaxSize()) {
                             Image(
-                                painter = painterResource(id = R.drawable.card_blue),
+                                painter = painterResource(id = cardImageRes),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(width = 160.dp, height = 100.dp)
