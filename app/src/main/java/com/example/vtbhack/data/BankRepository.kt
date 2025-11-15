@@ -5,12 +5,16 @@ import kotlinx.coroutines.withContext
 
 object BankRepository {
 
+
     var vbankConsentId: String? = null
     var sbankConsentId: String? = null
     var abankConsentId: String? = null
     private var accountsInternal: List<BankApi.AccountDto> = emptyList()
     private var accountsUi: List<BankAccountUi> = emptyList()
     var transactionsByAccount: Map<String, List<BankApi.TransactionDto>> = emptyMap()
+
+    // Простейшее хранение категорий: id транзакции -> название категории
+    private val transactionCategories: MutableMap<String, String> = mutableMapOf()
 
     private const val CLIENT_LOGIN_IN_BANK = "team255-1"
 
@@ -99,4 +103,22 @@ object BankRepository {
 
     fun getTransactions(accountId: String): List<BankApi.TransactionDto> =
         transactionsByAccount[accountId].orEmpty()
+
+    fun getTransactionCategory(transactionId: String): String? =
+        transactionCategories[transactionId]
+
+    fun setTransactionCategory(transactionId: String, category: String) {
+        transactionCategories[transactionId] = category
+    }
+
+    /**
+     * Плоский список всех транзакций вместе с их категориями.
+     * Удобно для экрана аналитики.
+     */
+    fun getAllTransactionsWithCategories(): List<Pair<BankApi.TransactionDto, String?>> {
+        return transactionsByAccount.values.flatten().map { tx ->
+            tx to transactionCategories[tx.transactionId]
+        }
+    }
+
 }

@@ -1164,14 +1164,51 @@ private fun FinanceDistributionScreen() {
 private fun CardsAnalyticsScreen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Аналитика по картам") }
 }
-
 @Composable
 private fun CardDetailsScreen(
     accountId: String,
     onBack: () -> Unit = {},
-    onOpenSettings: () -> Unit = {}) {
+    onOpenSettings: () -> Unit = {}
+) {
     val background = AppBg
     val hint = Color(0xFFB0B0B0)
+
+    // Находим нужный счёт и его транзакции
+    val accountUi = remember(accountId) {
+        BankRepository.getAccountsUi().firstOrNull { it.id == accountId }
+    }
+    val transactions = remember(accountId) {
+        BankRepository.getTransactions(accountId)
+    }
+
+    // Локальное состояние категорий (для реактивного UI) + синк с репозиторием
+    val localCategories = remember(accountId) {
+        mutableStateMapOf<String, String>().apply {
+            transactions.forEach { tx ->
+                BankRepository.getTransactionCategory(tx.transactionId)?.let { put(tx.transactionId, it) }
+            }
+        }
+    }
+
+    // Какая транзакция сейчас редактируется в диалоге выбора категории
+    var categoryDialogTxId by remember { mutableStateOf<String?>(null) }
+
+    fun parseAmount(str: String?): Double {
+        if (str == null) return 0.0
+        return str.replace(",", ".").toDoubleOrNull() ?: 0.0
+    }
+
+    // Считаем суммы и признак доход/расход
+    val txWithAmount = remember(accountId, transactions) {
+        transactions.map { tx ->
+            val amount = parseAmount(tx.amount.amount)
+            Triple(tx, amount, amount >= 0.0) // third = isIncome (если знак другой, поменяешь логически)
+        }
+    }
+
+    val totalIncome = txWithAmount.filter { it.third }.sumOf { it.second }
+    val totalExpense = txWithAmount.filter { !it.third }.sumOf { kotlin.math.abs(it.second) }
+
     Surface(color = background) {
         Box(Modifier.fillMaxSize()) {
             val scroll = rememberScrollState()
@@ -1222,9 +1259,19 @@ private fun CardDetailsScreen(
                             contentScale = ContentScale.FillBounds
                         )
                         Spacer(Modifier.height(16.dp))
-                        Text("Alfa-Bank **2345", color = Color.White, fontSize = 16.sp)
+                        Text(
+                            accountUi?.title ?: "Счёт $accountId",
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
                         Spacer(Modifier.height(6.dp))
-                        Text("115 000 ₽", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                        val balanceText = accountUi?.balance?.toRub() ?: "--"
+                        Text(
+                            balanceText,
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
 
                         Spacer(Modifier.height(16.dp))
                         Row(
@@ -1233,8 +1280,14 @@ private fun CardDetailsScreen(
                                 .padding(horizontal = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            MiniCard(title = "Alfa-Bank **2345", amount = "115 000 ₽")
-                            MiniCard(title = "T-Bank **1890", amount = "5000 ₽")
+                            // Показываем первые две карты из репозитория
+                            val allAccounts = BankRepository.getAccountsUi()
+                            allAccounts.take(2).forEach { acc ->
+                                MiniCard(
+                                    title = acc.title,
+                                    amount = acc.balance.toRub()
+                                )
+                            }
                         }
                     }
                 }
@@ -1242,7 +1295,7 @@ private fun CardDetailsScreen(
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    text = "Итого за Сентябрь",
+                    text = "Итого по счёту",
                     color = hint,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 30.dp)
@@ -1256,32 +1309,67 @@ private fun CardDetailsScreen(
                         .padding(horizontal = 30.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    KpiChip(title = "Доходы", value = "188 000 ₽", positive = true, modifier = Modifier.weight(1f))
-                    KpiChip(title = "Расходы", value = "58 000 ₽", positive = false, modifier = Modifier.weight(1f))
+                    KpiChip(
+                        title = "Доходы",
+                        value = totalIncome.toRub(),
+                        positive = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    KpiChip(
+                        title = "Расходы",
+                        value = totalExpense.toRub(),
+                        positive = false,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                DayHeader(day = "September, 24th", total = "Итого: -2250 ₽")
-                TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Delivery Club", amountText = "- 1500")
-                TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Yandex GO", amountText = "- 750")
+                // Группировка транзакций по дате
+                val grouped = txWithAmount
+                    .groupBy { (tx, _, _) -> formatTransactionDayLabel(tx.bookingDateTime) }
+                    .toSortedMap(compareByDescending { it })
 
-                Spacer(Modifier.height(8.dp))
-                DayHeader(day = "September, 21th", total = "")
-                TransactionRow(isIncome = true, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Vasiliy M.", amountText = "+ 1500")
-                TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Delivery Club", amountText = "- 2000")
+                grouped.forEach { (dayLabel, list) ->
+                    val dayExpenses = list
+                        .filter { !it.third }
+                        .sumOf { kotlin.math.abs(it.second) }
 
-                Spacer(Modifier.height(8.dp))
-                DayHeader(day = "September, 19th", total = "")
-                // Extra copies to make it look long
-                repeat(10) {
-                    TransactionRow(isIncome = false, title = "Uncategorized", bank = "Alpha-bank**2544", merchant = "Delivery Club", amountText = "- 450")
+                    val totalText = if (dayExpenses > 0.0) {
+                        "Итого: -${dayExpenses.toRub()}"
+                    } else {
+                        ""
+                    }
+
+                    DayHeader(day = dayLabel, total = totalText)
+
+                    list.forEach { (tx, amount, isIncome) ->
+                        val txId = tx.transactionId
+                        val amountAbs = kotlin.math.abs(amount)
+                        val amountText = (if (isIncome) "+ " else "- ") + amountAbs.toRub()
+                        val category = localCategories[txId]
+                            ?: BankRepository.getTransactionCategory(txId)
+
+                        TransactionRow(
+                            isIncome = isIncome,
+                            title = category ?: "Без категории",
+                            bank = accountUi?.title ?: "Счёт $accountId",
+                            merchant = tx.merchantName ?: (tx.description ?: ""),
+                            amountText = amountText,
+                            category = category,
+                            onCategoryClick = {
+                                categoryDialogTxId = txId
+                            }
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 Spacer(Modifier.height(120.dp)) // bottom space to scroll above bottom bar
             }
 
-            // Floating edit button
+            // Floating edit button (пока можно оставить заглушкой)
             FloatingActionButton(
                 onClick = { /* edit */ },
                 modifier = Modifier
@@ -1292,9 +1380,44 @@ private fun CardDetailsScreen(
                 Icon(Icons.Filled.Edit, contentDescription = "Edit")
             }
         }
+
+        // Диалог выбора категории
+        if (categoryDialogTxId != null) {
+            val categories = listOf("Еда", "Транспорт", "Подписки", "Развлечения", "Другое")
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { categoryDialogTxId = null },
+                confirmButton = {},
+                title = { Text("Категория транзакции") },
+                text = {
+                    Column {
+                        categories.forEach { cat ->
+                            TextButton(
+                                onClick = {
+                                    val txId = categoryDialogTxId ?: return@TextButton
+                                    localCategories[txId] = cat
+                                    BankRepository.setTransactionCategory(txId, cat)
+                                    categoryDialogTxId = null
+                                }
+                            ) {
+                                Text(cat)
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                val txId = categoryDialogTxId ?: return@TextButton
+                                localCategories.remove(txId)
+                                BankRepository.setTransactionCategory(txId, "Без категории")
+                                categoryDialogTxId = null
+                            }
+                        ) {
+                            Text("Без категории")
+                        }
+                    }
+                }
+            )
+        }
     }
 }
-
 @Composable
 private fun MiniCard(title: String, amount: String) {
     Column(horizontalAlignment = Alignment.Start) {
@@ -1351,14 +1474,15 @@ private fun DayHeader(day: String, total: String) {
         }
     }
 }
-
 @Composable
 private fun TransactionRow(
     isIncome: Boolean,
     title: String,
     bank: String,
     merchant: String,
-    amountText: String
+    amountText: String,
+    category: String?,
+    onCategoryClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -1380,11 +1504,36 @@ private fun TransactionRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ColoredDot(color = if (isIncome) Color(0xFF00C853) else Color(0xFFFF5252))
                 Spacer(Modifier.width(6.dp))
-                Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    title,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
             Spacer(Modifier.height(2.dp))
             Text(bank, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
             Text(merchant, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            Spacer(Modifier.height(4.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val catText = category ?: "Без категории"
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF2B2B2B),
+                    modifier = Modifier
+                        .clickable(enabled = onCategoryClick != null) {
+                            onCategoryClick?.invoke()
+                        }
+                ) {
+                    Text(
+                        text = "Категория: $catText",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
         }
         Spacer(Modifier.width(12.dp))
         Text(
@@ -1395,7 +1544,6 @@ private fun TransactionRow(
         )
     }
 }
-
 @Composable
 private fun ColoredDot(color: Color) {
     Box(
@@ -1404,6 +1552,39 @@ private fun ColoredDot(color: Color) {
             .clip(CircleShape)
             .background(color)
     )
+}
+
+private fun formatTransactionDayLabel(raw: String): String {
+    // Ожидаемый формат из банка обычно "YYYY-MM-DD..." – берём первые 10 символов
+    val datePart = raw.take(10) // например, "2024-11-05"
+    return try {
+        val parts = datePart.split("-")
+        if (parts.size == 3) {
+            val year = parts[0]
+            val month = parts[1].toIntOrNull() ?: return datePart
+            val day = parts[2]
+            val monthNames = arrayOf(
+                "января",
+                "февраля",
+                "марта",
+                "апреля",
+                "мая",
+                "июня",
+                "июля",
+                "августа",
+                "сентября",
+                "октября",
+                "ноября",
+                "декабря"
+            )
+            val monthName = monthNames.getOrNull(month - 1) ?: return datePart
+            "$day $monthName"
+        } else {
+            datePart
+        }
+    } catch (e: Exception) {
+        datePart
+    }
 }
 
 @Composable
