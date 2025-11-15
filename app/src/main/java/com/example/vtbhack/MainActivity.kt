@@ -83,6 +83,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.example.vtbhack.data.ApiService
 import kotlinx.coroutines.launch
+import com.example.vtbhack.toRub
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -365,6 +366,18 @@ private fun HomeScreen(
 
     LaunchedEffect(Unit) {
         try {
+            // 1. Если ещё не запрашивали consents для vbank/abank – делаем это
+            if (BankRepository.vbankConsentId == null || BankRepository.abankConsentId == null) {
+                val consents = ApiService.getConsentsForAllBanks()
+
+                BankRepository.vbankConsentId = consents.vbank
+                    ?: error("VBank не вернул consent_id")
+
+                // ABank может быть опциональным – если не критично, можно не падать
+                BankRepository.abankConsentId = consents.abank
+            }
+
+            // 2. Грузим все доступные банки (vbank + abank, а позже и sbank)
             BankRepository.refreshAllData()
             accounts = BankRepository.getAccountsUi()
         } catch (e: Exception) {
@@ -422,7 +435,7 @@ private fun HomeScreen(
                 val total = accounts.sumOf { it.balance }
 
                 Text(
-                    text = "${total.toInt()} ₽",
+                    text = total.toRub(),
                     color = Color.White,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold
@@ -459,7 +472,7 @@ private fun HomeScreen(
 
                             CardTile(
                                 bankName = acc.title,
-                                amount = "${acc.balance.toInt()} ₽",
+                                amount = acc.balance.toRub(),
                                 imageRes = cardImageRes,
                                 modifier = Modifier.width(180.dp),
                                 onClick = { onOpenCardDetails(acc.id) }
@@ -1119,12 +1132,23 @@ private fun ProfileScreen(
                 }
                 Spacer(Modifier.height(12.dp))
 
+                val isSBankConnected = BankRepository.sbankConsentId != null
+                val sBankTitle = if (isSBankConnected) {
+                    "SBank уже подключён"
+                } else {
+                    "Подключить SBank"
+                }
+
                 WideTile(
-                    title = "Подключить SBank",
+                    title = sBankTitle,
                     icon = Icons.Filled.OpenInNew,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenSBankConsent() }
+                        .clickable {
+                            if (!isSBankConnected) {
+                                onOpenSBankConsent()
+                            }
+                        }
                 )
             }
         }

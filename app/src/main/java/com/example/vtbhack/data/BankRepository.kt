@@ -5,7 +5,6 @@ import kotlinx.coroutines.withContext
 
 object BankRepository {
 
-
     var vbankConsentId: String? = null
     var sbankConsentId: String? = null
     var abankConsentId: String? = null
@@ -13,38 +12,77 @@ object BankRepository {
     private var accountsUi: List<BankAccountUi> = emptyList()
     var transactionsByAccount: Map<String, List<BankApi.TransactionDto>> = emptyMap()
 
-    private const val BANK = "vbank"
     private const val CLIENT_LOGIN_IN_BANK = "team255-1"
-    var consentId: String? = null
 
     suspend fun refreshAllData() = withContext(Dispatchers.IO) {
         val jwt = AppSession.jwt ?: error("No JWT in session")
-        val consent = consentId ?: error("No consent id set in BankRepository")
 
-        val accs = BankApi.getAccounts(jwt, BANK, CLIENT_LOGIN_IN_BANK, consent)
-        accountsInternal = accs
-
-        // готовим UI-модели
-        accountsUi = accs.map { dto ->
-            BankAccountUi(
-                id = dto.accountId,
-                bank = BANK, // пока один банк; когда пойдут мультибанки — сюда подставишь dto.bank
-                title = dto.name ?: dto.product ?: "Счёт ${dto.accountId.takeLast(4)}",
-                balance = dto.balances?.firstOrNull()?.amount ?: 0.0
-            )
-        }
-
+        val allAccounts = mutableListOf<BankApi.AccountDto>()
+        val allAccountsUi = mutableListOf<BankAccountUi>()
         val txMap = mutableMapOf<String, List<BankApi.TransactionDto>>()
-        for (acc in accs) {
-            val tx = BankApi.getTransactions(
+
+        // ВАЖНО: делаем suspend
+        suspend fun loadBank(bankCode: String, consentId: String?) {
+            // если для банка нет consentId – просто пропускаем его
+            if (consentId.isNullOrBlank()) return
+
+            // 1. Счета
+            val accs = BankApi.getAccounts(
                 jwt = jwt,
-                bank = BANK,
-                accountId = acc.accountId,
+                bank = bankCode,
                 clientId = CLIENT_LOGIN_IN_BANK,
-                consentId = consent
+                consentId = consentId
             )
-            txMap[acc.accountId] = tx
+            allAccounts += accs
+
+            // 2. UI-модели + транзакции по каждому счёту
+            for (dto in accs) {
+
+                val last4 = dto.accountId.takeLast(4)
+                val bankLabel = when (bankCode.lowercase()) {
+                    "vbank" -> "VBank"
+                    "abank" -> "ABank"
+                    "sbank" -> "SBank"
+                    else -> bankCode
+                }
+
+                val title = "$bankLabel **$last4"
+
+                // баланс ты уже считаешь отдельно через getBalances()
+                val balances = BankApi.getBalances(
+                    jwt = jwt,
+                    bank = bankCode,
+                    accountId = dto.accountId,
+                    clientId = CLIENT_LOGIN_IN_BANK,
+                    consentId = consentId
+                )
+                val mainBalance = balances.firstOrNull()?.amount?.amount?.toDoubleOrNull() ?: 0.0
+
+                allAccountsUi += BankAccountUi(
+                    id = dto.accountId,
+                    bank = bankCode,
+                    title = title,
+                    balance = mainBalance
+                )
+
+                val tx = BankApi.getTransactions(
+                    jwt = jwt,
+                    bank = bankCode,
+                    accountId = dto.accountId,
+                    clientId = CLIENT_LOGIN_IN_BANK,
+                    consentId = consentId
+                )
+                txMap[dto.accountId] = tx
+            }
         }
+
+        // пробуем загрузить все банки, для которых уже есть consentId
+        loadBank("vbank", vbankConsentId)
+        loadBank("abank", abankConsentId)
+        loadBank("sbank", sbankConsentId)
+
+        accountsInternal = allAccounts
+        accountsUi = allAccountsUi
         transactionsByAccount = txMap
     }
 
