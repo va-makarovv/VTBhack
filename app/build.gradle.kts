@@ -66,11 +66,11 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    implementation("androidx.constraintlayout:constraintlayout-compose:1.0.1")
+    implementation(libs.androidx.constraintlayout.compose)
 
     implementation("androidx.compose.material:material-icons-extended")
 
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation(libs.androidx.security.crypto)
 
     implementation(platform("io.ktor:ktor-bom:2.3.12"))
     implementation("io.ktor:ktor-client-android")
@@ -78,7 +78,6 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-client-logging")
     implementation("io.ktor:ktor-client-auth")
-
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
 
     implementation("androidx.navigation:navigation-compose:2.7.7")
